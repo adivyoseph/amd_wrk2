@@ -1,5 +1,6 @@
 CFLAGS  := -std=c99 -Wall -O2 -D_REENTRANT
 LIBS    := -lpthread -lm -lcrypto -lssl
+OPENSSL_LIB	:= /usr/local/opt/openssl/
 
 TARGET  := $(shell uname -s | tr '[A-Z]' '[a-z]' 2>/dev/null || echo unknown)
 
@@ -10,9 +11,8 @@ else ifeq ($(TARGET), darwin)
 	# Per https://luajit.org/install.html: If MACOSX_DEPLOYMENT_TARGET
 	# is not set then it's forced to 10.4, which breaks compile on Mojave.
 	export MACOSX_DEPLOYMENT_TARGET = $(shell sw_vers -productVersion)
-	LDFLAGS += -pagezero_size 10000 -image_base 100000000
-	LIBS += -L/usr/local/opt/openssl/lib
-	CFLAGS += -I/usr/local/include -I/usr/local/opt/openssl/include
+	LIBS += -L$(OPENSSL_LIB)/lib
+	CFLAGS += -I$(OPENSSL_LIB)/include
 else ifeq ($(TARGET), linux)
         CFLAGS  += -D_POSIX_C_SOURCE=200809L -D_BSD_SOURCE
 	LIBS    += -ldl
