@@ -29,39 +29,52 @@ BIN  := wrk
 ODIR := obj
 OBJ  := $(patsubst %.c,$(ODIR)/%.o,$(SRC)) $(ODIR)/bytecode.o
 
-LDIR     = deps/luajit/src
+LDIR     	= deps/luajit
+LDIR_SRC	= $(LDIR)/src
+
 LIBS    := -lluajit $(LIBS)
-CFLAGS  += -I$(LDIR)
-LDFLAGS += -L$(LDIR)
+CFLAGS  += -I$(LDIR_SRC)
+LDFLAGS += -L$(LDIR_SRC)
 
 all: $(BIN)
 
 clean:
 	$(RM) $(BIN) obj/*
-	@$(MAKE) -C deps/luajit clean
+ifneq ($(wildcard $(LDIR)/.),)
+	@$(MAKE) -C $(LDIR) clean
+endif
+
 
 $(BIN): $(OBJ)
 	@echo LINK $(BIN)
 	@$(CC) $(LDFLAGS) -o $@ $^ $(LIBS)
 
-$(OBJ): config.h Makefile $(LDIR)/libluajit.a | $(ODIR)
+$(OBJ): config.h Makefile $(LDIR_SRC)/libluajit.a | $(ODIR)
 
 $(ODIR):
 	@mkdir -p $@
 
 $(ODIR)/bytecode.o: src/wrk.lua
 	@echo LUAJIT $<
-	@$(SHELL) -c 'cd $(LDIR) && ./luajit -b $(CURDIR)/$< $(CURDIR)/$@'
+	@$(SHELL) -c 'cd $(LDIR_SRC) && ./luajit -b $(CURDIR)/$< $(CURDIR)/$@'
 
 $(ODIR)/%.o : %.c
 	@echo CC $<
 	@$(CC) $(CFLAGS) -c -o $@ $<
 
-$(LDIR)/libluajit.a:
+$(LDIR_SRC)/libluajit.a: download_luajit
 	@echo Building LuaJIT...
-	@$(MAKE) -C $(LDIR) BUILDMODE=static
+	@$(MAKE) -C $(LDIR_SRC) BUILDMODE=static
 
-.PHONY: all clean
+download_luajit:
+ifneq ($(wildcard $(LDIR)/.),)
+	@echo LuaJIT was already downloaded, skipping it...
+else
+	@echo Downloading LuaJIT...
+	@git clone https://github.com/LuaJIT/LuaJIT.git -b v2.1 $(LDIR)
+endif
+
+.PHONY: all clean download_luajit
 .SUFFIXES:
 .SUFFIXES: .c .o .lua
 
