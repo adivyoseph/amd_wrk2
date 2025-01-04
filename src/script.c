@@ -7,6 +7,9 @@
 #include "stats.h"
 #include "zmalloc.h"
 
+#include <stdio.h>
+#include <sys/time.h>
+
 typedef struct {
     char *name;
     int   type;

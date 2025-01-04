@@ -193,7 +193,10 @@ void dasm_put(Dst_DECL, int start, ...)
       b[pos++] = n;
       switch (action) {
       case DASM_DISP:
-	if (n == 0) { if ((mrm&7) == 4) mrm = p[-2]; if ((mrm&7) != 5) break; }
+	      if (n == 0) { 
+          if ((mrm&7) == 4) mrm = p[-2]; 
+          if ((mrm&7) != 5)  break; 
+        }
       case DASM_IMM_DB: if (((n+128)&-256) == 0) goto ob;
       case DASM_REL_A: /* Assumes ptrdiff_t is int. !x64 */
       case DASM_IMM_D: ofs += 4; break;
@@ -201,10 +204,13 @@ void dasm_put(Dst_DECL, int start, ...)
       case DASM_IMM_B: CK((n&-256) == 0, RANGE_I); ob: ofs++; break;
       case DASM_IMM_WB: if (((n+128)&-256) == 0) goto ob;
       case DASM_IMM_W: CK((n&-65536) == 0, RANGE_I); ofs += 2; break;
-      case DASM_SPACE: p++; ofs += n; break;
+      case DASM_SPACE: p++; 
+          ofs += n; 
+          break;
       case DASM_SETLABEL: b[pos-2] = -0x40000000; break;  /* Neg. label ofs. */
       case DASM_VREG: CK((n&-8) == 0 && (n != 4 || (*p&1) == 0), RANGE_VREG);
-	if (*p++ == 1 && *p == DASM_DISP) mrm = n; continue;
+	        if (*p++ == 1 && *p == DASM_DISP) mrm = n; 
+          continue;
       }
       mrm = 4;
     } else {
@@ -212,12 +218,12 @@ void dasm_put(Dst_DECL, int start, ...)
       switch (action) {
       case DASM_REL_LG:
       case DASM_IMM_LG:
-	n = *p++; pl = D->lglabels + n;
-	/* Bkwd rel or global. */
-	if (n <= 246) { CK(n>=10||*pl<0, RANGE_LG); CKPL(lg, LG); goto putrel; }
-	pl -= 246; n = *pl;
-	if (n < 0) n = 0;  /* Start new chain for fwd rel if label exists. */
-	goto linkrel;
+        n = *p++; pl = D->lglabels + n;
+        /* Bkwd rel or global. */
+        if (n <= 246) { CK(n>=10||*pl<0, RANGE_LG); CKPL(lg, LG); goto putrel; }
+        pl -= 246; n = *pl;
+        if (n < 0) n = 0;  /* Start new chain for fwd rel if label exists. */
+        goto linkrel;
       case DASM_REL_PC:
       case DASM_IMM_PC: pl = D->pclabels + va_arg(ap, int); CKPL(pc, PC);
       putrel:

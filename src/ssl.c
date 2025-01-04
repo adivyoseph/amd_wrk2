@@ -9,7 +9,7 @@
 #include "ssl.h"
 
 static pthread_mutex_t *locks;
-
+/*
 static void ssl_lock(int mode, int n, const char *file, int line) {
     pthread_mutex_t *lock = &locks[n];
     if (mode & CRYPTO_LOCK) {
@@ -18,10 +18,13 @@ static void ssl_lock(int mode, int n, const char *file, int line) {
         pthread_mutex_unlock(lock);
     }
 }
+*/
 
+/*
 static unsigned long ssl_id() {
     return (unsigned long) pthread_self();
 }
+*/
 
 SSL_CTX *ssl_init() {
     SSL_CTX *ctx = NULL;
