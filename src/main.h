@@ -25,6 +25,10 @@
 #include "units.h"
 #include "zmalloc.h"
 
+#include <dirent.h>
+#include <sys/stat.h>
+
+
 struct config;
 
 static void *thread_main(void *);
@@ -53,5 +57,55 @@ static void print_stats_header();
 static void print_stats(char *, stats *, char *(*)(long double));
 //static void print_stats_latency(stats *);
 static void print_hdr_latency(struct hdr_histogram*, const char*);
+
+// AMD extras =====================================================================
+
+typedef struct topoCore_s {
+    struct topoCore_s *p_next;
+    int coreId;               // system global
+    int dieId;
+    int chipletId;
+    int cpuCnt;                // number of CPUs in a Core
+    int cpus[2];               // OS CPU numbers 
+} topoCore_t;
+
+typedef struct topoChiplet_s {
+    struct topoChiplet_s *p_next;
+    int chipletId;             // only assume node scope
+    int coreCnt;               // number of Cores in a chiplet
+    topoCore_t *p_cores;       // pointer to an array of Cores 
+} topoChiplet_t;
+
+typedef struct topoNode_s {
+    struct topoNode_s *p_next; 
+    int nodeId;                 // system global
+    int coreCnt;
+    struct topoCore_s *p_cores;
+
+
+    int chipletCnt;             // number of chiplets in a node
+    topoChiplet_t *p_chiplets;     // pointer to an array of chiplets 
+} topoNode_t;
+
+typedef struct topoSocket_s {
+    struct topoSocket_s *p_next;
+    int socketId;
+    int nodeCnt;                // number of nodes in a socket
+    topoNode_t *p_nodes;        // pointer to an array of nodes 
+} topoSocket_t;
+
+
+
+
+int topoSocketsCnt = 0;
+topoSocket_t *p_topoSockets = NULL;
+int topoNodesCnt = 0;
+topoNode_t *p_topoNodes = NULL;
+
+
+static int topology_init();
+static topoSocket_t * topologyGetSocket(int);
+static void topologySocketAddNode(topoSocket_t *p_socket, topoNode_t *p_node)
+
 
 #endif /* MAIN_H */

@@ -60,7 +60,7 @@ static void usage() {
            "    -H, --header      <H>  Add header to request      \n"
            "    -L  --latency          Print latency statistics   \n"
            "    -U  --u_latency        Print uncorrected latency statistics\n"
-           "        --timeout     <T>  Socket/request timeout     \n"
+           "    -T, --timeout     <T>  Socket/request timeout     \n"
            "    -B, --batch_latency    Measure latency of whole   \n"
            "                           batches of pipelined ops   \n"
            "                           (as opposed to each op)    \n"
@@ -69,6 +69,11 @@ static void usage() {
            "                           in requests/sec (total)    \n"
            "                           [Required Parameter]       \n"
            "                                                      \n"
+           "  AMD extras: \n"
+           "    -D --topology     <>   Dump server chiplet topology \n"
+           "    -C --cpu_list     <>   Optional coma seperated list \n"
+           "                           of CPU's to assign to threads. \n" 
+           "                           Number of items must equal threads. \n"    
            "                                                      \n"
            "  Numeric arguments may include a SI unit (1k, 1M, 1G)\n"
            "  Time arguments may include a time unit (2s, 2m, 2h)\n");
@@ -704,6 +709,8 @@ static struct option longopts[] = {
     { "help",           no_argument,       NULL, 'h' },
     { "version",        no_argument,       NULL, 'v' },
     { "rate",           required_argument, NULL, 'R' },
+    //AMD extras
+     { "topology",      no_argument,       NULL, 'D' },
     { NULL,             0,                 NULL,  0  }
 };
 
@@ -717,6 +724,8 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
     cfg->timeout     = SOCKET_TIMEOUT_MS;
     cfg->rate        = 0;
     cfg->record_all_responses = true;
+
+    topology_init();
 
     while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:R:LUBrv?", longopts, NULL)) != -1) {
         switch (c) {
@@ -845,3 +854,232 @@ static void print_stats_latency(stats *stats) {
     }
 }
 */
+
+
+// AMD extras =====================================================================
+
+
+static int topology_init() {
+    FILE *p_file;
+    DIR *p_folder;
+    struct dirent *p_entry;
+    char c_work[128];
+    int i, c, j,k,n;
+
+
+    int i_rtc = 0;
+    int i_sockets = 0;
+    int i_systemNodes = 0;
+    int i_cpusPerNode = 0;
+    int i_chiplets = 0;
+    int i_cores = 0;
+    int i_smt = 1;
+
+    //determine node count
+    //Linux only lists cpu's and their data by node
+    i = 0;
+    p_folder = opendir("/sys/devices/system/node");
+    if (p_folder == NULL) {
+        return -1;
+    }
+    while ((p_entry = readdir(p_folder)) != NULL) {
+       if(p_entry->d_type == DT_DIR)  {// if the type is a directory
+               //printf("%s\n", p_entry->d_name);
+           if (strncmp(p_entry->d_name, "node", 4) == 0) {
+                //printf("node %s found\n", p_entry->d_name);
+                i++;
+            }
+       }
+    }
+    closedir(p_folder);
+    printf("i_systemNodes %d\n", i);
+    i_systemNodes = i;
+
+    //assume that nodes are identical in size
+    i = 0;
+    p_folder = opendir("/sys/devices/system/node/node0");
+    if (p_folder == NULL) {
+        return -1;
+    }
+
+    while ((p_entry = readdir(p_folder)) != NULL) {
+        //printf("--> %s %d\n", p_entry->d_name, p_entry-> d_type);
+        if(p_entry->d_type == 10)  {// if the type is a directory
+            if (strncmp(p_entry->d_name, "cpu", 3) == 0) {
+                 //printf("cpu %s found\n", p_entry->d_name);
+                 i++;
+             }
+        }
+     }
+    closedir(p_folder);
+    i_cpusPerNode = i;
+    printf("i_cpusPerNode %d\n", i);
+
+    //build node and cpu lists
+    for(n = 0; n < i_systemNodes; n++) {
+        topoNode_t *p_node;
+        topoCore_t *p_core;
+
+        printf("Node %d\n", n);
+
+        p_node = (topoNode_t *) malloc(sizeof( topoNode_t));
+        p_node->p_next = NULL;
+        p_node->p_cores = NULL;
+        p_node->coreCnt = i_cpusPerNode;
+        if(p_topoNodes == NULL) {
+            p_topoNodes = p_node;
+        } else {
+            topoNode_t *p_nodeNext = p_topoNodes;
+            while (p_nodeNext->p_next != NULL) p_nodeNext = p_nodeNext->p_next;
+            p_nodeNext->p_next = p_node;
+        }
+        p_node->nodeId = n;
+        //build cpu list
+        for (c = 0; c < i_cpusPerNode; c++) {
+            //printf("%d core %d\n", n, c);
+           
+            sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/topology/core_id", n, c);
+            p_file = fopen(c_work, "r");
+            if (p_file) {
+                p_core = (topoCore_t *) malloc(sizeof(topoCore_t ));
+                p_core->p_next = NULL;
+                fgets(c_work, 100, p_file);
+                p_core->coreId = atoi(c_work);
+                fclose(p_file);
+                //printf("%d %d coreId %d\n", n, c,p_core->coreId );
+                
+                sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/cache/index3/id", n, c);
+                p_file = fopen(c_work, "r");
+                if (p_file) {
+                    fgets(c_work, 100, p_file);
+                    p_core->chipletId = atoi(c_work);
+                    fclose(p_file);
+                    //printf("%d %d chipletID %d\n", n,c, p_core->chipletId);
+                } else return -1;
+
+                sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/topology/die_id", n, c);
+                p_file = fopen(c_work, "r");
+                if (p_file) {
+                    fgets(c_work, 100, p_file);
+                    p_core->dieId = atoi(c_work);
+                    fclose(p_file);
+                    //printf("%d %d scketId %d\n", n,c, p_core->dieId);
+                } else return -1;
+                sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/topology/thread_siblings_list", n, c);
+                p_file = fopen(c_work, "r");
+                if (p_file) {
+                    i = fscanf(p_file,"%d,%d", &j, &k);
+                    fclose(p_file);
+                    if (i < 2) {
+                        p_core->cpuCnt = 1;
+                        p_core->cpus[0] = j;
+                        if (j != c) {
+                            p_core->cpus[0] = c;
+                        }
+                    } else {
+                        p_core->cpuCnt = 2;
+                        if (j < k){
+                            p_core->cpus[0] = j;
+                            p_core->cpus[1] = k;
+                        }
+                        else {
+                            p_core->cpus[0] = k;
+                            p_core->cpus[1] = j;
+                        }
+                    }
+                    //printf("%d %d threads %d %d  i %d\n", n,c, p_core->cpus[0],p_core->cpus[1], i);
+                } else return -1;
+   
+                printf("cpu %2d coreId %d chipletId %d dieId %d cpus %d, %d \n", c , p_core->coreId, p_core->chipletId, p_core->dieId, p_core->cpus[0],p_core->cpus[1]);
+            } else {
+
+                return -1;
+            }
+            if(p_node->p_cores == NULL) {
+                p_node->p_cores = p_core;
+            } else {
+                topoCore_t *p_coreNext = p_node->p_cores;
+                 while (p_coreNext->p_next != NULL) p_coreNext = p_coreNext->p_next;
+                p_coreNext->p_next = p_core;
+            }
+            
+        }
+    }
+     topoNode_t *p_node = p_topoNodes;
+    for(n = 0; n < i_systemNodes; n++) {
+        topoCore_t *p_core = p_node->p_cores;
+        for (c = 0; c < i_cpusPerNode; c++) {
+            topoSocket_t *p_socket = topologyGetSocket(p_core->dieId);
+            topologySocketAddNode(p_socket, p_node);
+
+
+
+            p_core = p_core->p_next;
+        }
+
+        p_node = p_node->p_next;
+    }
+
+
+
+
+
+    return i_rtc;
+}
+
+static void topologySocketAddNode(topoSocket_t *p_socket, topoNode_t *p_node){
+    topoNode_t *p_nodeNext = p_topoNodes;
+    if (p_topoNodes == p_node) {
+        p_topoNodes = p_topoNodes->p_next;
+    } else {
+        while (p_nodeNext != NULL) {
+            if(p_nodeNext->p_next == p_node) {
+                 p_nodeNext->p_next = p_node->p_next;
+                break;
+            }
+            p_nodeNext = p_nodeNext->p_next;
+        }
+    }
+ 
+    p_node->p_next = NULL;
+    if(p_socket->p_nodes == NULL) {
+        p_socket->p_nodes = p_node;
+        p_socket->nodeCnt = 1;
+
+    } else {
+        topoNode_t *p_nodeNext = p_socket->p_nodes;
+        while (p_nodeNext->p_next != NULL) {
+            p_nodeNext = p_nodeNext->p_next;
+        }
+        p_nodeNext->p_next = p_node;
+        p_socket->nodeCnt++;
+    }
+}
+
+static topoSocket_t * topologyGetSocket(int id){
+    topoSocket_t *p_socket = NULL;
+     
+    if(p_topoSockets == NULL) {
+        p_socket = (topoSocket_t *) malloc(sizeof(topoSocket_t));
+        p_socket->socketId = id;
+        p_socket->p_next = NULL;
+        p_topoSockets = p_socket;
+    } else {
+        p_socket = p_topoSockets;
+        while (p_socket != NULL) {
+            if (id == p_socket->socketId) {
+                break;
+            }
+            p_socket = p_socket->p_next;
+        }
+        if(p_socket == NULL) {
+            p_socket = p_topoSockets;
+            while (p_socket->p_next != NULL)  p_socket = p_socket->p_next;
+            p_socket->p_next = (topoSocket_t *) malloc(sizeof(topoSocket_t));
+            p_socket = p_socket->p_next;
+            p_socket->socketId = id;
+            p_socket->p_next = NULL;
+        }
+    }
+    return p_socket;
+}
