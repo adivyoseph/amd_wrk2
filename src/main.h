@@ -1,6 +1,7 @@
 #ifndef MAIN_H
 #define MAIN_H
 
+
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
@@ -18,6 +19,12 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <sys/uio.h>
+#include <assert.h>
+#include <sched.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
 
 #include "ssl.h"
 #include "aprintf.h"
@@ -102,7 +109,9 @@ int topoSocketsCnt = 0;             //TODO is this needed
 topoSocket_t *p_topoSockets = NULL;
 int topoNodesCnt = 0;               //TODO is this needed
 topoNode_t *p_topoNodes = NULL;
-
+#define CPULISTMAX 256
+int cpulistCnt = 0;
+int cpuList[CPULISTMAX];
 
 static int topology_init();
 static void topologyDump(void);
@@ -110,5 +119,7 @@ static topoSocket_t * topologyGetSocket(int);
 static void topologySocketAddNode(topoSocket_t *p_socket, topoNode_t *p_node);
 static topoChiplet_t * topologyGetChiplet(topoNode_t *, int);
 static void topologyChipletAddCore(topoChiplet_t *p_chiplet, topoCore_t *p_core);
+static int topologyGetMaxCpu(void);
+
 
 #endif /* MAIN_H */

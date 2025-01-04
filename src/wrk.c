@@ -73,6 +73,7 @@ static void usage() {
            "    -D --topology     <>   Dump server chiplet topology \n"
            "    -C --cpu_list     <>   Optional coma seperated list \n"
            "                           of CPU's to assign to threads. \n" 
+           "                           No spaces: 1,2,3,4           \n"
            "                           Number of items must equal threads. \n"    
            "                                                      \n"
            "  Numeric arguments may include a SI unit (1k, 1M, 1G)\n"
@@ -87,6 +88,8 @@ int main(int argc, char **argv) {
         usage();
         exit(1);
     }
+
+    
 
     char *schema  = copy_url_part(url, &parts, UF_SCHEMA);
     char *host    = copy_url_part(url, &parts, UF_HOST);
@@ -135,6 +138,13 @@ int main(int argc, char **argv) {
         t->connections = connections;
         t->throughput = throughput;
         t->stop_at     = stop_at;
+
+        if(cfg.threads > cpulistCnt) {
+            t->cpu = -1;
+        } else {
+            t->cpu = cpuList[i];
+            printf("thtread %ld cpu %d\n", i, cpuList[i]);
+        }
 
         t->L = script_create(cfg.script, url, headers);
         script_init(L, t, argc - optind, &argv[optind]);
@@ -253,8 +263,21 @@ int main(int argc, char **argv) {
 }
 
 void *thread_main(void *arg) {
+    cpu_set_t my_set;        /* Define your cpu_set bit mask. */
+    unsigned cpu, numa;
+
     thread *thread = arg;
     aeEventLoop *loop = thread->loop;
+
+    if (thread->cpu >= 0) {
+
+        getcpu(&cpu, &numa);
+        CPU_ZERO(&my_set); 
+        CPU_SET(thread->cpu, &my_set);
+        sched_setaffinity(0, sizeof(cpu_set_t), &my_set);
+    }
+
+
 
     thread->cs = zcalloc(thread->connections * sizeof(connection));
     tinymt64_init(&thread->rand, time_us());
@@ -711,6 +734,7 @@ static struct option longopts[] = {
     { "rate",           required_argument, NULL, 'R' },
     //AMD extras
      { "topology",      no_argument,       NULL, 'D' },
+     { "cpu_list",      required_argument, NULL, 'C' },
     { NULL,             0,                 NULL,  0  }
 };
 
@@ -728,9 +752,14 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
     topology_init();
     //topologyDump();
 
-    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:R:LUBDrv?", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "C:t:c:d:s:H:T:R:LUBDrv?", longopts, NULL)) != -1) {
         switch (c) {
             case 'D': topologyDump(); return -1;
+
+            case 'C': //cpu_list
+                scan_cpulist(optarg, &cpuList[0], &cpulistCnt);
+                return -1;
+                break;
                       
             case 't':
                 if (scan_metric(optarg, &cfg->threads)) return -1;
@@ -1217,3 +1246,6 @@ static void topologyDump(void) {
     }
     printf("========== AMD Topology  ===========\n\n");
 }
+
+
+

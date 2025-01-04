@@ -1,4 +1,4 @@
-CFLAGS  := -std=c99 -Wall -O2 -D_REENTRANT -march=native -ggdb
+CFLAGS  := -std=c99 -Wall -O2 -D_REENTRANT -march=native -ggdb -D_GNU_SOURCE
 LIBS    := -lpthread -lm -lcrypto -lssl
 
 TARGET  := $(shell uname -s | tr '[A-Z]' '[a-z]' 2>/dev/null || echo unknown)
