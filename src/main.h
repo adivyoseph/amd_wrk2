@@ -61,7 +61,8 @@ static void print_hdr_latency(struct hdr_histogram*, const char*);
 // AMD extras =====================================================================
 
 typedef struct topoCore_s {
-    struct topoCore_s *p_next;
+    struct topoCore_s *p_nodeListNext;
+    struct topoCore_s *p_chipletListNext;
     int coreId;               // system global
     int dieId;
     int chipletId;
@@ -77,12 +78,12 @@ typedef struct topoChiplet_s {
 } topoChiplet_t;
 
 typedef struct topoNode_s {
-    struct topoNode_s *p_next; 
+    struct topoNode_s *p_nodeListNext; 
     int nodeId;                 // system global
     int coreCnt;
     struct topoCore_s *p_cores;
-
-
+    //second phase
+    struct topoNode_s *p_socketListNext; 
     int chipletCnt;             // number of chiplets in a node
     topoChiplet_t *p_chiplets;     // pointer to an array of chiplets 
 } topoNode_t;
@@ -97,15 +98,17 @@ typedef struct topoSocket_s {
 
 
 
-int topoSocketsCnt = 0;
+int topoSocketsCnt = 0;             //TODO is this needed
 topoSocket_t *p_topoSockets = NULL;
-int topoNodesCnt = 0;
+int topoNodesCnt = 0;               //TODO is this needed
 topoNode_t *p_topoNodes = NULL;
 
 
 static int topology_init();
+static void topologyDump(void);
 static topoSocket_t * topologyGetSocket(int);
-static void topologySocketAddNode(topoSocket_t *p_socket, topoNode_t *p_node)
-
+static void topologySocketAddNode(topoSocket_t *p_socket, topoNode_t *p_node);
+static topoChiplet_t * topologyGetChiplet(topoNode_t *, int);
+static void topologyChipletAddCore(topoChiplet_t *p_chiplet, topoCore_t *p_core);
 
 #endif /* MAIN_H */

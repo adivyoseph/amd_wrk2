@@ -726,9 +726,12 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
     cfg->record_all_responses = true;
 
     topology_init();
+    //topologyDump();
 
-    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:R:LUBrv?", longopts, NULL)) != -1) {
+    while ((c = getopt_long(argc, argv, "t:c:d:s:H:T:R:LUBDrv?", longopts, NULL)) != -1) {
         switch (c) {
+            case 'D': topologyDump(); return -1;
+                      
             case 't':
                 if (scan_metric(optarg, &cfg->threads)) return -1;
                 break;
@@ -865,15 +868,14 @@ static int topology_init() {
     struct dirent *p_entry;
     char c_work[128];
     int i, c, j,k,n;
+    __attribute__ ((unused)) char *cp_rtc = NULL;
 
 
-    int i_rtc = 0;
-    int i_sockets = 0;
     int i_systemNodes = 0;
     int i_cpusPerNode = 0;
-    int i_chiplets = 0;
-    int i_cores = 0;
-    int i_smt = 1;
+
+
+ 
 
     //determine node count
     //Linux only lists cpu's and their data by node
@@ -892,8 +894,9 @@ static int topology_init() {
        }
     }
     closedir(p_folder);
-    printf("i_systemNodes %d\n", i);
+    //printf("i_systemNodes %d\n", i);
     i_systemNodes = i;
+    topoNodesCnt = i; //TODO is this needed
 
     //assume that nodes are identical in size
     i = 0;
@@ -913,37 +916,39 @@ static int topology_init() {
      }
     closedir(p_folder);
     i_cpusPerNode = i;
-    printf("i_cpusPerNode %d\n", i);
+    //printf("i_cpusPerNode %d\n", i);
 
-    //build node and cpu lists
+    //build system wide node and cpu lists
     for(n = 0; n < i_systemNodes; n++) {
         topoNode_t *p_node;
         topoCore_t *p_core;
 
-        printf("Node %d\n", n);
-
+        //printf("Node %d\n", n);
         p_node = (topoNode_t *) malloc(sizeof( topoNode_t));
-        p_node->p_next = NULL;
+        p_node->p_nodeListNext = NULL;
+        p_node->p_socketListNext = NULL;
         p_node->p_cores = NULL;
+        p_node->p_chiplets = NULL;
         p_node->coreCnt = i_cpusPerNode;
         if(p_topoNodes == NULL) {
             p_topoNodes = p_node;
         } else {
             topoNode_t *p_nodeNext = p_topoNodes;
-            while (p_nodeNext->p_next != NULL) p_nodeNext = p_nodeNext->p_next;
-            p_nodeNext->p_next = p_node;
+            while (p_nodeNext->p_nodeListNext != NULL) p_nodeNext = p_nodeNext->p_nodeListNext;
+            p_nodeNext->p_nodeListNext = p_node;
         }
         p_node->nodeId = n;
-        //build cpu list
+        //build node cpu list
         for (c = 0; c < i_cpusPerNode; c++) {
             //printf("%d core %d\n", n, c);
-           
+       
             sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/topology/core_id", n, c);
             p_file = fopen(c_work, "r");
             if (p_file) {
                 p_core = (topoCore_t *) malloc(sizeof(topoCore_t ));
-                p_core->p_next = NULL;
-                fgets(c_work, 100, p_file);
+                p_core->p_nodeListNext = NULL;
+                cp_rtc = fgets(c_work, 100, p_file);
+                
                 p_core->coreId = atoi(c_work);
                 fclose(p_file);
                 //printf("%d %d coreId %d\n", n, c,p_core->coreId );
@@ -951,7 +956,7 @@ static int topology_init() {
                 sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/cache/index3/id", n, c);
                 p_file = fopen(c_work, "r");
                 if (p_file) {
-                    fgets(c_work, 100, p_file);
+                    cp_rtc = fgets(c_work, 100, p_file);
                     p_core->chipletId = atoi(c_work);
                     fclose(p_file);
                     //printf("%d %d chipletID %d\n", n,c, p_core->chipletId);
@@ -960,7 +965,7 @@ static int topology_init() {
                 sprintf(c_work, "/sys/devices/system/node/node%d/cpu%d/topology/die_id", n, c);
                 p_file = fopen(c_work, "r");
                 if (p_file) {
-                    fgets(c_work, 100, p_file);
+                    cp_rtc = fgets(c_work, 100, p_file);
                     p_core->dieId = atoi(c_work);
                     fclose(p_file);
                     //printf("%d %d scketId %d\n", n,c, p_core->dieId);
@@ -990,71 +995,112 @@ static int topology_init() {
                     //printf("%d %d threads %d %d  i %d\n", n,c, p_core->cpus[0],p_core->cpus[1], i);
                 } else return -1;
    
-                printf("cpu %2d coreId %d chipletId %d dieId %d cpus %d, %d \n", c , p_core->coreId, p_core->chipletId, p_core->dieId, p_core->cpus[0],p_core->cpus[1]);
+                //printf("cpu %2d coreId %d chipletId %d dieId %d cpus %d, %d \n", c , p_core->coreId, p_core->chipletId, p_core->dieId, p_core->cpus[0],p_core->cpus[1]);
             } else {
-
                 return -1;
             }
             if(p_node->p_cores == NULL) {
                 p_node->p_cores = p_core;
             } else {
                 topoCore_t *p_coreNext = p_node->p_cores;
-                 while (p_coreNext->p_next != NULL) p_coreNext = p_coreNext->p_next;
-                p_coreNext->p_next = p_core;
+                 while (p_coreNext->p_nodeListNext != NULL) p_coreNext = p_coreNext->p_nodeListNext;
+                p_coreNext->p_nodeListNext = p_core;
             }
             
         }
     }
-     topoNode_t *p_node = p_topoNodes;
+
+    //Build p_topoSockets list
+    topoNode_t *p_node = p_topoNodes;
     for(n = 0; n < i_systemNodes; n++) {
         topoCore_t *p_core = p_node->p_cores;
         for (c = 0; c < i_cpusPerNode; c++) {
             topoSocket_t *p_socket = topologyGetSocket(p_core->dieId);
             topologySocketAddNode(p_socket, p_node);
-
-
-
-            p_core = p_core->p_next;
+            p_core = p_core->p_nodeListNext;
         }
+        p_node = p_node->p_nodeListNext;
+    }
 
-        p_node = p_node->p_next;
+    //Build node chiplet lists
+    p_node = p_topoNodes;
+    for(n = 0; n < i_systemNodes; n++) {
+        topoCore_t *p_core = p_node->p_cores;
+        for (c = 0; c < i_cpusPerNode; c++) {
+            //printf("cpu %2d coreId %d chipletId %d dieId %d cpus %d, %d \n", c , p_core->coreId, p_core->chipletId, p_core->dieId, p_core->cpus[0],p_core->cpus[1]);
+            topoChiplet_t *p_chiplet = topologyGetChiplet(p_node, p_core->chipletId);
+            topologyChipletAddCore(p_chiplet, p_core);
+            
+            p_core = p_core->p_nodeListNext;
+        }
+        p_node = p_node->p_nodeListNext;
     }
 
 
 
 
 
-    return i_rtc;
+    return 0;
 }
 
 static void topologySocketAddNode(topoSocket_t *p_socket, topoNode_t *p_node){
-    topoNode_t *p_nodeNext = p_topoNodes;
-    if (p_topoNodes == p_node) {
-        p_topoNodes = p_topoNodes->p_next;
-    } else {
-        while (p_nodeNext != NULL) {
-            if(p_nodeNext->p_next == p_node) {
-                 p_nodeNext->p_next = p_node->p_next;
-                break;
-            }
-            p_nodeNext = p_nodeNext->p_next;
-        }
-    }
- 
-    p_node->p_next = NULL;
-    if(p_socket->p_nodes == NULL) {
+    topoNode_t *p_nodeNext = NULL;
+
+    if (p_socket->p_nodes == NULL) { //first node
         p_socket->p_nodes = p_node;
+        p_node->p_socketListNext = NULL;
         p_socket->nodeCnt = 1;
 
     } else {
-        topoNode_t *p_nodeNext = p_socket->p_nodes;
-        while (p_nodeNext->p_next != NULL) {
-            p_nodeNext = p_nodeNext->p_next;
+        p_nodeNext = p_socket->p_nodes;
+        while (p_nodeNext != NULL) {
+            if (p_nodeNext == p_node) break;
+            if (p_nodeNext->p_socketListNext == NULL) {
+                p_nodeNext->p_socketListNext = p_node;
+                p_node->p_socketListNext = NULL;
+                p_socket->nodeCnt++;
+                break;
+
+            }
+            p_nodeNext = p_nodeNext->p_socketListNext;
         }
-        p_nodeNext->p_next = p_node;
-        p_socket->nodeCnt++;
+        
     }
+
 }
+
+static void topologyChipletAddCore(topoChiplet_t *p_chiplet, topoCore_t *p_core){
+    topoCore_t *p_coreNext = NULL;
+
+    if (p_chiplet->p_cores == NULL) { //first core
+        p_chiplet->p_cores = p_core;
+        p_core->p_chipletListNext = NULL;
+        p_chiplet->coreCnt = 1;
+        //printf("AddCore new %d\n", p_core->coreId);
+    } else {
+        p_coreNext = p_chiplet->p_cores;
+       // printf("AddCore add %d ", p_core->coreId);
+        while (p_coreNext != NULL) {
+            //printf(" <%d> ", p_coreNext->coreId);
+            if(p_coreNext->coreId == p_core->coreId) {
+                //printf("found\n");
+                break;  // already there
+            } 
+            if(p_coreNext->p_chipletListNext == NULL) {  //not found
+                p_coreNext->p_chipletListNext = p_core;
+                p_core->p_chipletListNext = NULL;
+                p_chiplet->coreCnt++;
+                //printf(" not found, add\n");
+                break;
+
+            }
+            p_coreNext = p_coreNext->p_chipletListNext;
+        }
+
+    }
+
+}
+
 
 static topoSocket_t * topologyGetSocket(int id){
     topoSocket_t *p_socket = NULL;
@@ -1063,7 +1109,9 @@ static topoSocket_t * topologyGetSocket(int id){
         p_socket = (topoSocket_t *) malloc(sizeof(topoSocket_t));
         p_socket->socketId = id;
         p_socket->p_next = NULL;
+        p_socket->p_nodes = NULL;
         p_topoSockets = p_socket;
+        topoSocketsCnt = 1;             //TODO is this needed
     } else {
         p_socket = p_topoSockets;
         while (p_socket != NULL) {
@@ -1072,6 +1120,7 @@ static topoSocket_t * topologyGetSocket(int id){
             }
             p_socket = p_socket->p_next;
         }
+        //not found
         if(p_socket == NULL) {
             p_socket = p_topoSockets;
             while (p_socket->p_next != NULL)  p_socket = p_socket->p_next;
@@ -1079,7 +1128,92 @@ static topoSocket_t * topologyGetSocket(int id){
             p_socket = p_socket->p_next;
             p_socket->socketId = id;
             p_socket->p_next = NULL;
+            topoSocketsCnt++;             //TODO is this needed
         }
     }
     return p_socket;
+}
+
+static topoChiplet_t * topologyGetChiplet(topoNode_t *p_node, int id){
+    topoChiplet_t *p_chiplet = NULL;
+
+    if (p_node->p_chiplets == NULL) {
+        p_chiplet = (topoChiplet_t *) malloc(sizeof(topoChiplet_t));
+        p_node->p_chiplets = p_chiplet;
+        p_chiplet->chipletId = id;
+        p_chiplet->p_next = NULL;
+        p_chiplet->p_cores = NULL;
+        p_node->chipletCnt = 1;
+    } else {
+        p_chiplet = p_node->p_chiplets;
+        while ( p_chiplet != NULL) {
+            if (id == p_chiplet->chipletId) {
+                break;
+            }
+            p_chiplet = p_chiplet->p_next;
+        }
+        //not found
+        if(p_chiplet == NULL) {
+            p_chiplet = p_node->p_chiplets;
+            while (p_chiplet->p_next != NULL) p_chiplet = p_chiplet->p_next;
+            p_chiplet->p_next = (topoChiplet_t *) malloc(sizeof(topoChiplet_t));
+            p_chiplet = p_chiplet->p_next;
+            p_chiplet->chipletId = id;
+            p_chiplet->p_next = NULL;
+            p_chiplet->p_cores = NULL;
+            p_node->chipletCnt++;
+        }
+    }
+    return p_chiplet;
+}
+
+static int topologyGetMaxCpu(void){
+    int maxCpu = 0;
+
+    maxCpu = topoNodesCnt * p_topoNodes->coreCnt;
+    
+    return maxCpu;
+}
+
+static void topologyDump(void) {
+    topoSocket_t *p_socket = p_topoSockets;
+    topoNode_t *p_node = NULL;
+    topoChiplet_t *p_chiplet = NULL;
+    topoCore_t *p_core = NULL;
+
+    printf("========== AMD Topology  ===========  %d\n", topologyGetMaxCpu());
+    while (p_socket != NULL){
+        printf("socket[%d]\n", p_socket->socketId);
+        p_node = p_socket->p_nodes;
+        while (p_node != NULL) {
+            printf("- Node[%d]\n", p_node->nodeId);
+            p_chiplet = p_node->p_chiplets;
+            while (p_chiplet != NULL) {
+                printf("-- Chiplet[%d] cores %d\n", p_chiplet->chipletId, p_chiplet->coreCnt);
+                printf("         ");
+                p_core = p_chiplet->p_cores;
+                while (p_core != NULL) {
+                    printf("%3d  ", p_core->cpus[0]);
+                    p_core = p_core->p_chipletListNext;
+                }
+                printf("\n");
+                if (p_chiplet->p_cores->cpuCnt == 2) {
+                    printf("         ");
+                    p_core = p_chiplet->p_cores;
+                    while (p_core != NULL) {
+                        printf("%3d  ", p_core->cpus[1]);
+                        p_core = p_core->p_chipletListNext;
+                    }
+                    printf("\n");
+
+
+                }
+
+                p_chiplet = p_chiplet->p_next;
+            }
+            p_node = p_node->p_socketListNext;
+        }
+        p_socket = p_socket->p_next;
+    }
+    printf("========== AMD Topology  ===========\n\n");
 }
