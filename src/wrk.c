@@ -758,7 +758,7 @@ static int parse_args(struct config *cfg, char **url, struct http_parser_url *pa
 
             case 'C': //cpu_list
                 scan_cpulist(optarg, &cpuList[0], &cpulistCnt);
-                return -1;
+              
                 break;
                       
             case 't':
